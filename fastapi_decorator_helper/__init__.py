@@ -1,8 +1,9 @@
+import asyncio
 from collections import OrderedDict
 from inspect import Parameter, signature, Signature
-from typing import Callable, Dict, List, NoReturn, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
-ExecutePathOperator = Callable[[], NoReturn]
+ExecutePathOperator = Callable[[], Any]
 
 
 def _is_parameter_conflicts(param: Parameter, params: OrderedDict[str, Parameter]):
@@ -95,7 +96,10 @@ class ArgumentProcessor:
         def execute_path_operator():
             _args, _kwargs = self._get_path_operator_arguments(*args, **kwargs)
 
-            return self.path_operator(*_args, **_kwargs)
+            if asyncio.iscoroutinefunction(self.path_operator):
+                return asyncio.run(self.path_operator(*_args, **_kwargs))
+            else:
+                return self.path_operator(*_args, **_kwargs)
 
         for param in self._decorator_signature.parameters.values():
             if param.annotation == ExecutePathOperator:
@@ -117,8 +121,8 @@ class DecoratorHelper:
             def decorator_wrapper(*args, **kwargs):
                 return self.argument_processor.execute_decorator(*args, **kwargs)
 
-            decorator_wrapper.__signature__ = self.argument_processor.merged_signature
             decorator_wrapper.__doc__ = func.__doc__
+            decorator_wrapper.__signature__ = self.argument_processor.merged_signature
 
             return decorator_wrapper
 
