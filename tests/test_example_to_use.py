@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
-from fastapi_decorator_helper import DecoratorHelper, ExecutePathOperator
+from fastapi_decorator_helper import DecoratorHelper, ExecutePathOperation
 import json
 
 app = FastAPI()
@@ -10,7 +10,7 @@ def require_api_key(api_key):
     helper = DecoratorHelper()
 
     @helper.wraps
-    def wrapper(request: Request, next: ExecutePathOperator):
+    def wrapper(request: Request, next: ExecutePathOperation):
         if request.headers.get('Authorization') != api_key:
             return Response(status_code=403, content=json.dumps({
                 'detail': 'invalid api key'

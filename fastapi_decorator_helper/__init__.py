@@ -3,7 +3,7 @@ from collections import OrderedDict
 from inspect import Parameter, signature, Signature
 from typing import Any, Callable, Dict, List, Tuple
 
-ExecutePathOperator = Callable[[], Any]
+ExecutePathOperation = Callable[[], Any]
 
 
 def _is_parameter_conflicts(param: Parameter, params: OrderedDict[str, Parameter]):
@@ -13,7 +13,13 @@ def _is_parameter_conflicts(param: Parameter, params: OrderedDict[str, Parameter
     if param.name not in params:
         return False
 
-    # TODO: check parameter type and default value
+    param2 = params[param.name]
+
+    if param.default == param2.default:
+        return False
+
+    if param.annotation == param2.annotation:
+        return False
 
     return True
 
@@ -38,36 +44,36 @@ def arg_position_priority(param: Parameter):
 
 
 class ArgumentProcessor:
-    def __init__(self, path_operator: Callable, decorator: Callable):
-        self.path_operator = path_operator
+    def __init__(self, path_operation: Callable, decorator: Callable):
+        self.path_operation = path_operation
         self.decorator = decorator
 
         self._initialize()
 
     def _initialize(self):
-        path_operator_signature = signature(self.path_operator)
+        path_operation_signature = signature(self.path_operation)
         decorator_signature = signature(self.decorator)
 
         # raise if parameter conflicts
-        for param in path_operator_signature.parameters.values():
+        for param in path_operation_signature.parameters.values():
             if _is_parameter_conflicts(param, decorator_signature.parameters):
                 raise f'duplicated parameter name {param.name}'
 
-        self._path_operator_signature = path_operator_signature
+        self._path_operation_signature = path_operation_signature
         self._decorator_signature = decorator_signature
 
     @property
     def merged_signature(self) -> Signature:
         params = []
         
-        for param in self._path_operator_signature.parameters.values():
+        for param in self._path_operation_signature.parameters.values():
             params.append(param)
 
         for param in self._decorator_signature.parameters.values():
             if param.kind in [Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD]:
                 continue
 
-            if param.annotation == ExecutePathOperator:
+            if param.annotation == ExecutePathOperation:
                 continue
 
             params.append(param)
@@ -80,11 +86,11 @@ class ArgumentProcessor:
         _args, _kwargs = self._get_decorator_arguments(*args, **kwargs)
         return self.decorator(*_args, **_kwargs)
 
-    def _get_path_operator_arguments(self, *args, **kwargs) -> Tuple[List, Dict]:
+    def _get_path_operation_arguments(self, *args, **kwargs) -> Tuple[List, Dict]:
         _args = []
         _kwargs = {}
 
-        for param in self._path_operator_signature.parameters.values():
+        for param in self._path_operation_signature.parameters.values():
             _kwargs[param.name] = kwargs[param.name]
 
         return _args, _kwargs
@@ -93,17 +99,17 @@ class ArgumentProcessor:
         _args = []
         _kwargs = {}
 
-        def execute_path_operator():
-            _args, _kwargs = self._get_path_operator_arguments(*args, **kwargs)
+        def execute_path_operation():
+            _args, _kwargs = self._get_path_operation_arguments(*args, **kwargs)
 
-            if asyncio.iscoroutinefunction(self.path_operator):
-                return asyncio.run(self.path_operator(*_args, **_kwargs))
+            if asyncio.iscoroutinefunction(self.path_operation):
+                return asyncio.run(self.path_operation(*_args, **_kwargs))
             else:
-                return self.path_operator(*_args, **_kwargs)
+                return self.path_operation(*_args, **_kwargs)
 
         for param in self._decorator_signature.parameters.values():
-            if param.annotation == ExecutePathOperator:
-                _kwargs[param.name] = execute_path_operator
+            if param.annotation == ExecutePathOperation:
+                _kwargs[param.name] = execute_path_operation
                 continue
 
             _kwargs[param.name] = kwargs[param.name]
@@ -112,8 +118,6 @@ class ArgumentProcessor:
 
 
 class DecoratorHelper:
-    # TODO: support positional only argument
-
     def wraps(self, decorator):
         def wrapper(func):
             self.argument_processor = ArgumentProcessor(func, decorator)
